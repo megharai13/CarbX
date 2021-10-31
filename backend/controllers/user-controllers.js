@@ -1,75 +1,158 @@
-const uuid=require("uuid").v4;
 const {validationResult}=require("express-validator");
 
 const HttpError=require("../models/http-error");
+const User=require("../models/user");
+const Nutrient=require("../models/nutrient");
+const Food=require("../models/food");
 
-let users=[{
-    id: 12345,
-    name: "ram",
-    age: "25",
-    email: "ram@gmail.com",
-    password: "rampass",
-    phoneNumber: "1234567890"
-}];
-
-function login(req,res,next){
+async function login(req,res,next){
     const {email,password}=req.body;
-    const identifiedUser=users.find(u=>u.email===email);
-    if(!identifiedUser||identifiedUser.password!==password){
-        return next( new HttpError("Invalid email or password",401));
+    let existingUser;
+    try{
+        existingUser=await User.findOne({email:email});
+    }catch(err){
+        return next(new HttpError("Logging in failed,try again later",500));
+    }
+    if(!existingUser||existingUser.password!==password){
+        return next( new HttpError("Invalid credentials",401));
     }
     res.json({"message":"Logged in successfully"});
 }
 
-function signup(req,res,next){
+async function signup(req,res,next){
     const errors=validationResult(req);
     if(!errors.isEmpty()){
         return next(new HttpError("Invalid inputs passed",422));
     }
-    const {name,age,email,password,phoneNumber}= req.body;
-    const u=users.find(u=>u.email===email);
-    if(u){
-        return next(new HttpError("User already exixts",403));
+    const {name,age,email,password}= req.body;
+    let existingUser;
+    try{
+        existingUser=await User.findOne({email:email});
+    }catch(err){
+        return next(new HttpError("Signup failed,try again later",500));
     }
-    const newUser={
-        id: uuid(),
+    if(existingUser){
+        return next(new HttpError("User already exists, login instead",422));
+    }
+    const newUser=new User({
         name,
         age,
+        image:"url",
         email,
-        password,
-        phoneNumber
-    };
-    users.push(newUser);
+        password
+    });
+    try{
+        await newUser.save();
+    }catch(err){
+        return next(new HttpError("Could not create user, try again later",500));
+    }
     res.status(201).json({"message": "User created successfully"});
 }
 
-function getUser(req,res,next){
+async function getUser(req,res,next){
     const userId=req.params.uid;
-    const u=users.find(u=>u.id==userId);
-    if(!u){
+    let foundUser,foundNutrients;
+    try{
+        foundUser=await User.findById(userId,"-password");
+    }catch(err){
+        return next(new HttpError("Could not fetch user,try again later",500));
+    }
+    try{
+        foundNutrients=await Nutrient.find({userId:userId});
+    }catch(err){
+        return next(new HttpError("Could not fetch user,try again later",500));
+    }
+    if(!foundUser){
         return next(new HttpError("User does not exist",404));
     }
-    res.json({u});
+    if(!foundNutrients){
+        return next(new HttpError("No data found",404));
+    }
+    res.json({
+        user:foundUser.toObject({getters:true}),
+        nutrients:foundNutrients.map(n=>n.toObject({getters:true}))
+    });
 }
 
-function updateUser(req,res,next){
+async function updateUser(req,res,next){
     const errors=validationResult(req);
     if(!errors.isEmpty()){
         return next(new HttpError("Invalid inputs passed",422));
     }
-    const {name,age,phoneNumber,password}=req.body;
+    const {email,age,password}=req.body;
     const userId=req.params.uid;
-    const u=users.find(u=>u.id==userId);
-    if(u.password!==password){
+    let foundUser;
+    try{
+        foundUser=await User.findById(userId);
+    }catch(err){
+        return next(new HttpError("Cound not update details,try again later",500));
+    }
+    if(foundUser.password!==password){
         return next(new HttpError("Incorrect password",401));
     }
-    u.name=name;
-    u.age=age;
-    u.phoneNumber=phoneNumber;
+    foundUser.age=age;
+    foundUser.email=email;
+    try{
+        await foundUser.save();
+    }catch(err){
+        return next(new HttpError("Cound not update details,try again later",500));
+    }
     res.json({"message":"updated successfully"});
+}
+
+async function postNutrients(req,res,next){
+    const errors=validationResult(req);
+    if(!errors.isEmpty()){
+        return next(new HttpError("Invalid inputs passed",422));
+    }
+    const userId=req.params.uid;
+    const{date,foodName,foodWeight}=req.body;
+    let foundNutrientData,foundFoodData;
+    try{
+        foundNutrientData=await Nutrient.findOne({userId:userId,date:date});
+    }catch(err){
+        return next(new HttpError("Could not complete your request,please try again later",500));
+    }
+    try{
+        foundFoodData=await Food.findOne({title:foodName});
+    }catch(err){
+        return next(new HttpError("Food item not found,please add the item first",404));
+    }
+    const carbs=foodWeight*foundFoodData.carbs/foundFoodData.weight;
+    const fats=foodWeight*foundFoodData.fats/foundFoodData.weight;
+    const calories=foodWeight*foundFoodData.calories/foundFoodData.weight;
+    const proteins=foodWeight*foundFoodData.proteins/foundFoodData.weight;
+    if(foundNutrientData){
+        foundNutrientData.fats+=fats;
+        foundNutrientData.calories+=calories;
+        foundNutrientData.proteins+=proteins;
+        foundNutrientData.carbs+=carbs;
+        try{
+            await foundNutrientData.save();
+        }catch(err){
+            return next(new HttpError("Could not complete your request,please try again later",500));
+        }
+    }else{
+        const newNutrientData=new Nutrient({
+            date,
+            userId,
+            carbs,
+            fats,
+            calories,
+            proteins
+        });
+        try{
+            await newNutrientData.save();
+        }catch(err){
+            console.log(err);
+            return next(new HttpError("Could not complete your request,please try again later",500));   
+        }
+    }
+    res.json({"message":"Successfully saved the deatils"});
 }
 
 exports.signup=signup;
 exports.login=login;
 exports.getUser=getUser;
 exports.updateUser=updateUser;
+exports.postNutrients=postNutrients;

@@ -11,7 +11,6 @@ router.post("/signup",
 [
     check("name").not().isEmpty(),
     check("age").not().isEmpty(),
-    check("phoneNumber").not().isEmpty(),
     check("email").normalizeEmail().isEmail(),
     check("password").isLength({min:8})
 ],
@@ -21,10 +20,18 @@ router.get("/:uid",userControllers.getUser);
 
 router.patch("/:uid",
 [
-    check("name").not().isEmpty(),
+    check("email").not().isEmpty(),
     check("age").not().isEmpty(),
-    check("phoneNumber").not().isEmpty(),
-]
-,userControllers.updateUser);
+    check("password").not().isEmpty()
+],
+userControllers.updateUser);
+
+router.post("/:uid",
+[
+    check("date").not().isEmpty(),
+    check("foodName").not().isEmpty(),
+    check("foodWeight").not().isEmpty()
+],
+userControllers.postNutrients)
 
 module.exports=router;

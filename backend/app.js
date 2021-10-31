@@ -1,5 +1,6 @@
 const express=require("express");
 const bodyParser=require("body-parser");
+const mongoose=require("mongoose");
 
 const foodRoutes=require("./routes/food-routes");
 const userRoutes=require("./routes/user-routes");
@@ -19,4 +20,6 @@ app.use(function(error,req,res,next){
     res.json({message:error.message||"An unknown error occurred."});
 });
 
-app.listen(5000);
+mongoose.connect("mongodb+srv://abhinav:abhinavmnnit@cluster0.eoai2.mongodb.net/foodDB?retryWrites=true&w=majority")
+.then(()=>app.listen(5000))
+.catch(err=>console.log(err));
